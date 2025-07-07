@@ -10,6 +10,17 @@ A simple web application that provides real-time weather information for cities 
 - RESTful API endpoint
 - Docker support for easy deployment
 
+## Screenshots
+
+### Home Page
+![Home Page](screenshots/home-page.png)
+
+### Weather Search Results
+![Weather Results](screenshots/weather-results.png)
+
+### Error Handling
+![Error Message](screenshots/error-message.png)
+
 ## Tech Stack
 
 - **Backend**: Node.js, Express.js
