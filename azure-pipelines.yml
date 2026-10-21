@@ -78,13 +78,10 @@ stages:
     steps:
 
     - script: |
-        TERRAFORM_VERSION="1.7.5"
-        echo "Installing Terraform ${TERRAFORM_VERSION}..."
-        curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -o terraform.zip
-        unzip -q terraform.zip
-        sudo mv terraform /usr/local/bin/terraform
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq terraform
         terraform version
-      displayName: 'Install Terraform'
+      displayName: 'Install Terraform via apt'
 
     - script: |
         cd $(Build.SourcesDirectory)/terraform
