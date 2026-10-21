@@ -77,22 +77,21 @@ stages:
       vmImage: 'ubuntu-latest'
     steps:
 
-    - task: TerraformInstaller@1
+    - script: |
+        TERRAFORM_VERSION="1.7.5"
+        echo "Installing Terraform ${TERRAFORM_VERSION}..."
+        curl -fsSL "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip" -o terraform.zip
+        unzip -q terraform.zip
+        sudo mv terraform /usr/local/bin/terraform
+        terraform version
       displayName: 'Install Terraform'
-      inputs:
-        terraformVersion: '1.7.5'
 
-    - task: TerraformTaskV4@4
-      displayName: 'Terraform init'
-      inputs:
-        provider: 'azurerm'
-        command: 'init'
-        workingDirectory: '$(Build.SourcesDirectory)/terraform'
-        backendType: 'local'
+    - script: |
+        cd $(Build.SourcesDirectory)/terraform
+        terraform init -backend=false
+      displayName: 'Terraform init (local)'
 
-    - task: TerraformTaskV4@4
+    - script: |
+        cd $(Build.SourcesDirectory)/terraform
+        terraform validate
       displayName: 'Terraform validate'
-      inputs:
-        provider: 'azurerm'
-        command: 'validate'
-        workingDirectory: '$(Build.SourcesDirectory)/terraform'
