@@ -15,7 +15,6 @@ variables:
 
 stages:
 
-# ── STAGE 1: Build & Validate ─────────────────────────────────────────────
 - stage: Build
   displayName: 'Build & Validate'
   jobs:
@@ -46,7 +45,6 @@ stages:
       displayName: 'Smoke test – app starts'
       continueOnError: true
 
-# ── STAGE 2: Docker Build ─────────────────────────────────────────────────
 - stage: Docker
   displayName: 'Docker Build'
   dependsOn: Build
@@ -66,7 +64,6 @@ stages:
           $(dockerImageName):$(tag)
           $(dockerImageName):latest
 
-# ── STAGE 3: Infrastructure (Terraform Validate) ─────────────────────────
 - stage: Infrastructure
   displayName: 'Terraform Validate'
   dependsOn: Build
@@ -78,17 +75,25 @@ stages:
     steps:
 
     - script: |
-        sudo apt-get update -qq
-        sudo apt-get install -y -qq terraform
-        terraform version
-      displayName: 'Install Terraform via apt'
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          hashicorp/terraform:1.7.5 \
+          version
+      displayName: 'Terraform version check'
 
     - script: |
-        cd $(Build.SourcesDirectory)/terraform
-        terraform init -backend=false
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          hashicorp/terraform:1.7.5 \
+          init -backend=false
       displayName: 'Terraform init (local)'
 
     - script: |
-        cd $(Build.SourcesDirectory)/terraform
-        terraform validate
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          hashicorp/terraform:1.7.5 \
+          validate
       displayName: 'Terraform validate'
