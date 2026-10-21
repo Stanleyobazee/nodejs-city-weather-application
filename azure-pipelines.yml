@@ -66,34 +66,33 @@ stages:
           $(dockerImageName):$(tag)
           $(dockerImageName):latest
 
-# ── STAGE 3: Infrastructure (Terraform Plan) ──────────────────────────────
+# ── STAGE 3: Infrastructure (Terraform Validate) ─────────────────────────
 - stage: Infrastructure
-  displayName: 'Terraform Plan'
+  displayName: 'Terraform Validate'
   dependsOn: Build
   jobs:
-  - job: TerraformPlan
-    displayName: 'Terraform init & plan'
+  - job: TerraformValidate
+    displayName: 'Terraform init & validate'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
 
-    - script: |
-        wget -q https://releases.hashicorp.com/terraform/1.7.5/terraform_1.7.5_linux_amd64.zip
-        unzip -q terraform_1.7.5_linux_amd64.zip
-        sudo mv terraform /usr/local/bin/
-        terraform version
+    - task: TerraformInstaller@1
       displayName: 'Install Terraform'
+      inputs:
+        terraformVersion: '1.7.5'
 
-    - script: |
-        cd terraform
-        terraform init -backend=false
-        terraform validate
-      displayName: 'Terraform init & validate'
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform init'
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(Build.SourcesDirectory)/terraform'
+        backendType: 'local'
 
-    - script: |
-        cd terraform
-        terraform plan -out=tfplan || echo "Plan requires Azure credentials – structure validated"
-      displayName: 'Terraform plan'
-      continueOnError: true
-      env:
-        ARM_USE_OIDC: 'true'
+    - task: TerraformTaskV4@4
+      displayName: 'Terraform validate'
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(Build.SourcesDirectory)/terraform'
