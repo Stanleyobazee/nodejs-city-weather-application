@@ -3,7 +3,7 @@ output "acr_login_server" {
   value       = azurerm_container_registry.acr.login_server
 }
 
-output "app_url" {
-  description = "Public URL of the deployed Container App"
-  value       = "https://${azurerm_container_app.app.ingress[0].fqdn}"
+output "container_app_environment_id" {
+  description = "Container App Environment ID"
+  value       = azurerm_container_app_environment.env.id
 }

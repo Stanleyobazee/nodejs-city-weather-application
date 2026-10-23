@@ -50,6 +50,7 @@ stages:
 - stage: Infrastructure
   displayName: 'Terraform Apply'
   dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
   - job: TerraformApply
     displayName: 'Provision Azure infrastructure'
@@ -65,8 +66,9 @@ stages:
           -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
           -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
           -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
           hashicorp/terraform:1.7.5 \
-          init -backend=false
+          init
       displayName: 'Terraform init'
 
     - script: |
@@ -77,6 +79,7 @@ stages:
           -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
           -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
           -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
           hashicorp/terraform:1.7.5 \
           validate
       displayName: 'Terraform validate'
@@ -89,10 +92,11 @@ stages:
           -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
           -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
           -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
           hashicorp/terraform:1.7.5 \
           apply -auto-approve
       displayName: 'Terraform apply'
-
+      
 - stage: Docker
   displayName: 'Build & Push Docker Image'
   dependsOn: Infrastructure
@@ -119,18 +123,31 @@ stages:
   dependsOn: Docker
   jobs:
   - job: DeployApp
-    displayName: 'Update Container App image'
+    displayName: 'Create or update Container App'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
 
     - task: AzureCLI@2
-      displayName: 'Deploy latest image to Container App'
+      displayName: 'Deploy to Container App'
       inputs:
         azureSubscription: 'azure-weather-app'
         scriptType: 'bash'
         scriptLocation: 'inlineScript'
         inlineScript: |
+          az containerapp create \
+            --name city-weather-app \
+            --resource-group rg-weather-app-dev \
+            --environment cae-weather-app \
+            --image $(acrLoginServer)/$(dockerImageName):$(tag) \
+            --registry-server $(acrLoginServer) \
+            --registry-username stanleyweatherappacr \
+            --registry-password $(az acr credential show --name stanleyweatherappacr --query passwords[0].value -o tsv) \
+            --target-port 4000 \
+            --ingress external \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --env-vars PORT=4000 || \
           az containerapp update \
             --name city-weather-app \
             --resource-group rg-weather-app-dev \
