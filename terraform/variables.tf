@@ -7,13 +7,13 @@ variable "resource_group_name" {
 variable "location" {
   description = "Azure region for all resources"
   type        = string
-  default     = "westeurope"
+  default     = "northeurope"
 }
 
 variable "acr_name" {
   description = "Azure Container Registry name (must be globally unique, alphanumeric only)"
   type        = string
-  default     = "weatherappacr"
+  default     = "stanleyweatherappacr"
 }
 
 variable "app_name" {

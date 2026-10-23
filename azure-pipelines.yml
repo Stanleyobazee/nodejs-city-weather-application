@@ -11,8 +11,8 @@ pr:
 variables:
   dockerImageName: 'city-weather-app'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
-  acrName: 'weatherappacr'
-  acrLoginServer: 'weatherappacr.azurecr.io'
+  acrName: 'stanleyweatherappacr'
+  acrLoginServer: 'stanleyweatherappacr.azurecr.io'
   tag: '$(Build.BuildId)'
 
 stages:
