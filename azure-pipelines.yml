@@ -15,7 +15,6 @@ variables:
 
 stages:
 
-# ── STAGE 1: Build & Validate ─────────────────────────────────────────────
 - stage: Build
   displayName: 'Build & Validate'
   jobs:
@@ -46,7 +45,56 @@ stages:
       displayName: 'Smoke test – app starts'
       continueOnError: true
 
-# ── STAGE 2: Docker Build ─────────────────────────────────────────────────
+- stage: Infrastructure
+  displayName: 'Terraform Apply'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: TerraformApply
+    displayName: 'Provision Azure infrastructure'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
+          hashicorp/terraform:1.7.5 \
+          init
+      displayName: 'Terraform init'
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
+          hashicorp/terraform:1.7.5 \
+          validate
+      displayName: 'Terraform validate'
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          -e ARM_ACCESS_KEY=$(TF_BACKEND_ACCESS_KEY) \
+          hashicorp/terraform:1.7.5 \
+          apply -auto-approve
+      displayName: 'Terraform apply'
+
 - stage: Docker
   displayName: 'Build & Push Docker Image'
   dependsOn: Infrastructure
@@ -75,37 +123,38 @@ stages:
           docker push stanleyweatherappacr.azurecr.io/city-weather-app:$(Build.BuildId)
           docker push stanleyweatherappacr.azurecr.io/city-weather-app:latest
 
-# ── STAGE 3: Infrastructure (Terraform Validate) ─────────────────────────
-- stage: Infrastructure
-  displayName: 'Terraform Validate'
-  dependsOn: Build
+- stage: Deploy
+  displayName: 'Deploy to Container Apps'
+  dependsOn: Docker
   jobs:
-  - job: TerraformValidate
-    displayName: 'Terraform init & validate'
+  - job: DeployApp
+    displayName: 'Create or update Container App'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
 
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          version
-      displayName: 'Terraform version check'
-
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          init -backend=false
-      displayName: 'Terraform init (local)'
-
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          validate
-      displayName: 'Terraform validate'
+    - task: AzureCLI@2
+      displayName: 'Deploy to Container App'
+      inputs:
+        azureSubscription: 'azure-weather-app'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az containerapp create \
+            --name city-weather-app \
+            --resource-group rg-weather-app-dev \
+            --environment cae-weather-app \
+            --image stanleyweatherappacr.azurecr.io/city-weather-app:$(Build.BuildId) \
+            --registry-server stanleyweatherappacr.azurecr.io \
+            --registry-username stanleyweatherappacr \
+            --registry-password "$(az acr credential show --name stanleyweatherappacr --query passwords[0].value -o tsv)" \
+            --target-port 4000 \
+            --ingress external \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --env-vars PORT=4000 2>/dev/null || \
+          az containerapp update \
+            --name city-weather-app \
+            --resource-group rg-weather-app-dev \
+            --image stanleyweatherappacr.azurecr.io/city-weather-app:$(Build.BuildId)
+          echo "App URL: https://$(az containerapp show --name city-weather-app --resource-group rg-weather-app-dev --query properties.configuration.ingress.fqdn -o tsv)"
