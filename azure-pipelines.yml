@@ -11,6 +11,8 @@ pr:
 variables:
   dockerImageName: 'city-weather-app'
   dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  acrName: 'weatherappacr'
+  acrLoginServer: 'weatherappacr.azurecr.io'
   tag: '$(Build.BuildId)'
 
 stages:
@@ -45,55 +47,91 @@ stages:
       displayName: 'Smoke test – app starts'
       continueOnError: true
 
-- stage: Docker
-  displayName: 'Docker Build'
+- stage: Infrastructure
+  displayName: 'Terraform Apply'
   dependsOn: Build
   jobs:
-  - job: DockerBuild
-    displayName: 'Build Docker image'
+  - job: TerraformApply
+    displayName: 'Provision Azure infrastructure'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          hashicorp/terraform:1.7.5 \
+          init -backend=false
+      displayName: 'Terraform init'
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          hashicorp/terraform:1.7.5 \
+          validate
+      displayName: 'Terraform validate'
+
+    - script: |
+        docker run --rm \
+          -v $(Build.SourcesDirectory)/terraform:/workspace \
+          -w /workspace \
+          -e ARM_CLIENT_ID=$(ARM_CLIENT_ID) \
+          -e ARM_CLIENT_SECRET=$(ARM_CLIENT_SECRET) \
+          -e ARM_TENANT_ID=$(ARM_TENANT_ID) \
+          -e ARM_SUBSCRIPTION_ID=$(ARM_SUBSCRIPTION_ID) \
+          hashicorp/terraform:1.7.5 \
+          apply -auto-approve
+      displayName: 'Terraform apply'
+
+- stage: Docker
+  displayName: 'Build & Push Docker Image'
+  dependsOn: Infrastructure
+  jobs:
+  - job: DockerBuildPush
+    displayName: 'Build and push to ACR'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
 
     - task: Docker@2
-      displayName: 'Build image'
+      displayName: 'Build and push image to ACR'
       inputs:
-        command: 'build'
+        command: 'buildAndPush'
         Dockerfile: $(dockerfilePath)
+        containerRegistry: 'azure-weather-app'
+        repository: '$(dockerImageName)'
         tags: |
-          $(dockerImageName):$(tag)
-          $(dockerImageName):latest
+          $(tag)
+          latest
 
-- stage: Infrastructure
-  displayName: 'Terraform Validate'
-  dependsOn: Build
+- stage: Deploy
+  displayName: 'Deploy to Container Apps'
+  dependsOn: Docker
   jobs:
-  - job: TerraformValidate
-    displayName: 'Terraform init & validate'
+  - job: DeployApp
+    displayName: 'Update Container App image'
     pool:
       vmImage: 'ubuntu-latest'
     steps:
 
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          version
-      displayName: 'Terraform version check'
-
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          init -backend=false
-      displayName: 'Terraform init (local)'
-
-    - script: |
-        docker run --rm \
-          -v $(Build.SourcesDirectory)/terraform:/workspace \
-          -w /workspace \
-          hashicorp/terraform:1.7.5 \
-          validate
-      displayName: 'Terraform validate'
+    - task: AzureCLI@2
+      displayName: 'Deploy latest image to Container App'
+      inputs:
+        azureSubscription: 'azure-weather-app'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az containerapp update \
+            --name city-weather-app \
+            --resource-group rg-weather-app-dev \
+            --image $(acrLoginServer)/$(dockerImageName):$(tag)
