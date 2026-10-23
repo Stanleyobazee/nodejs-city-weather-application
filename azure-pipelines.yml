@@ -108,7 +108,7 @@ stages:
       inputs:
         command: 'buildAndPush'
         Dockerfile: $(dockerfilePath)
-        containerRegistry: 'azure-weather-app'
+        containerRegistry: 'acr-weather-app'
         repository: '$(dockerImageName)'
         tags: |
           $(tag)
